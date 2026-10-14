@@ -1,22 +1,89 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import './App.css';
 
 function App() {
   const [data, setData] = useState([]);
+  
+  // State quản lý Filter, Sort, Paging
+  const [search, setSearch] = useState({ name: '', id: '', status: '' });
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10; // Mỗi trang hiển thị 10 bản ghi
 
+  // Fetch dữ liệu từ API
   useEffect(() => {
-    fetch('https://jsonplaceholder.typicode.com/users?_limit=1')
+    fetch('https://jsonplaceholder.typicode.com/users')
       .then((res) => res.json())
       .then((result) => {
-        const formattedData = result.map((item) => ({
-          id: item.id,
-          name: item.name,
-          status: 'Active',
-        }));
-        setData(formattedData);
+        // Tạo thêm dữ liệu mẫu giả lập 50 dòng để test Paging 10 record/trang
+        const extendedData = [];
+        for (let i = 0; i < 5; i++) {
+          result.forEach((user, idx) => {
+            const newId = i * 10 + user.id;
+            extendedData.push({
+              id: newId,
+              name: `${user.name} ${i > 0 ? `(${i + 1})` : ''}`,
+              status: newId % 2 === 0 ? 'Active' : 'Inactive',
+            });
+          });
+        }
+        setData(extendedData);
       })
       .catch((err) => console.error('Lỗi khi fetch API:', err));
   }, []);
+
+  // 1. Xử lý Lọc (Filter)
+  const filteredData = useMemo(() => {
+    return data.filter((item) => {
+      const matchName = item.name.toLowerCase().includes(search.name.toLowerCase());
+      const matchId = item.id.toString().includes(search.id);
+      const matchStatus = item.status.toLowerCase().includes(search.status.toLowerCase());
+      return matchName && matchId && matchStatus;
+    });
+  }, [data, search]);
+
+  // 2. Xử lý Sắp xếp (Sort)
+  const sortedData = useMemo(() => {
+    let sortableItems = [...filteredData];
+    if (sortConfig.key !== null) {
+      sortableItems.sort((a, b) => {
+        let aValue = a[sortConfig.key];
+        let bValue = b[sortConfig.key];
+
+        if (typeof aValue === 'string') {
+          aValue = aValue.toLowerCase();
+          bValue = bValue.toLowerCase();
+        }
+
+        if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+        if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+    return sortableItems;
+  }, [filteredData, sortConfig]);
+
+  // 3. Xử lý Phân trang (Paging 10 records / page)
+  const totalPages = Math.ceil(sortedData.length / pageSize) || 1;
+  const paginatedData = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize;
+    return sortedData.slice(startIndex, startIndex + pageSize);
+  }, [sortedData, currentPage]);
+
+  // Hàm đổi cột sắp xếp
+  const handleSort = (key) => {
+    let direction = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  // Hàm đổi từ khóa tìm kiếm
+  const handleSearchChange = (field, value) => {
+    setSearch((prev) => ({ ...prev, [field]: value }));
+    setCurrentPage(1); // Reset về trang 1 khi lọc
+  };
 
   return (
     <div className="app-container">
@@ -47,34 +114,89 @@ function App() {
         <button className="arrow right-arrow">›</button>
       </section>
 
-      {/* 3. Content */}
+      {/* 3. Content (Grid view với Filter, Sort & Paging) */}
       <main className="content">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>ID</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.length > 0 ? (
-              data.map((item) => (
-                <tr key={item.id}>
-                  <td>{item.name}</td>
-                  <td>{item.id}</td>
-                  <td>{item.status}</td>
-                </tr>
-              ))
-            ) : (
+        <div className="grid-container">
+          <table className="data-table">
+            <thead>
+              {/* Dòng Tiêu đề + Nút Sắp xếp */}
               <tr>
-                <td colSpan="3" style={{ textAlign: 'center' }}>
-                  Loading...
-                </td>
+                <th onClick={() => handleSort('name')} className="sortable-th">
+                  Name {sortConfig.key === 'name' ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '↕'}
+                </th>
+                <th onClick={() => handleSort('id')} className="sortable-th">
+                  ID {sortConfig.key === 'id' ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '↕'}
+                </th>
+                <th onClick={() => handleSort('status')} className="sortable-th">
+                  Status {sortConfig.key === 'status' ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '↕'}
+                </th>
               </tr>
-            )}
-          </tbody>
-        </table>
+              {/* Dòng Ô nhập Lọc (Filter Inputs) */}
+              <tr className="filter-row">
+                <th>
+                  <input
+                    type="text"
+                    placeholder="Lọc Name..."
+                    value={search.name}
+                    onChange={(e) => handleSearchChange('name', e.target.value)}
+                  />
+                </th>
+                <th>
+                  <input
+                    type="text"
+                    placeholder="Lọc ID..."
+                    value={search.id}
+                    onChange={(e) => handleSearchChange('id', e.target.value)}
+                  />
+                </th>
+                <th>
+                  <input
+                    type="text"
+                    placeholder="Lọc Status..."
+                    value={search.status}
+                    onChange={(e) => handleSearchChange('status', e.target.value)}
+                  />
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {paginatedData.length > 0 ? (
+                paginatedData.map((item) => (
+                  <tr key={item.id}>
+                    <td>{item.name}</td>
+                    <td>{item.id}</td>
+                    <td>{item.status}</td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan="3" style={{ textAlign: 'center', padding: '20px' }}>
+                    Không tìm thấy dữ liệu phù hợp
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+
+          {/* Thanh Phân Trang (Paging) ở cuối Grid */}
+          <div className="pagination">
+            <button
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+            >
+              ‹ Trang trước
+            </button>
+            <span className="page-info">
+              Trang <strong>{currentPage}</strong> / {totalPages} (Tổng: {sortedData.length} dòng)
+            </span>
+            <button
+              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
+            >
+              Trang sau ›
+            </button>
+          </div>
+        </div>
       </main>
 
       {/* 4. Footer */}
